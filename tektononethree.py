@@ -1,6 +1,8 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+log_to_console = True
+
 import time
 
 # LED STRIPS
@@ -15,6 +17,10 @@ import ImageFont
 
 # DRIVE via ARDUINO
 import serial
+drive_max_steps = 20000
+
+if (log_to_console):
+  print("Init start...")
 
 ### OLED
 
@@ -90,7 +96,13 @@ for strip in [led_r_rgb, led_r_w, led_f_rgb, led_f_w]:
 
   strip.show(offBytes)
 
+if (log_to_console):
+  print("Init complete")
+
 ### SEQUENCE FILES
+
+if (log_to_console):
+  print("Parse started...")
 
 items_command_index = 0
 items_unit_index = 1
@@ -201,11 +213,14 @@ for line in sequence_file:
   else:
     print("Cannot parse line: " + line)
 
+if (log_to_console):
+  print("Parse complete")
+
 ### GO! --------------------------------
 
-arduinoSerial.write('T')
-
 while True:
+  
+  arduinoSerial.write(chr(0x80)) # Bits 100: Sequence start
 
   start_time = int(time.time() * 1000)
 
@@ -222,8 +237,11 @@ while True:
     frame_index = meta[0] - 1
     
     # Set Drive
-      
-    arduinoSerial.write(chr(int(meta[2]*255.0)))
+    
+    # Impromptu protocol is 011 + 5MSB, 010 + 5bits, 010 + 5LSB
+    # drive_max_steps needs to be less than 2^15, ie 32k
+    vpos_steps = int(meta[2]*drive_max_steps)
+    arduinoSerial.write(chr(0x60 + ((vpos_steps >> 10) & 0x1F)) + chr(0x40 + ((vpos_steps >> 5) & 0x1F)) + chr(0x40 + (vpos_steps & 0x1F)))
     
     # Set LED Strips
     
@@ -233,6 +251,9 @@ while True:
     led_f_rgb.show(sequence_led_f_rgb[frame_index])
     led_r_w.show(sequence_led_r_www[frame_index])
     led_r_rgb.show(sequence_led_r_rgb[frame_index])
+    
+    if (log_to_console):
+      print("Frame " + str(frame_index) + " vpos_steps " + str(vpos_steps))
       
     # draw.rectangle([oled_status1_pos, oled_status1_poz], outline=0, fill=0)
     # draw.text(oled_status1_pos, "Frame:  " + items[frame_index],  font=font, fill=255)

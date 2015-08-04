@@ -38,12 +38,14 @@
 # define kLinearTravelSlowdownFactor 2
 
 bool validSerialDetected = false;
+uint16_t serialBytes[3];
+char serialIndex = 0;
 
 unsigned long stepPulseTime = 0;
 bool          stepPulseState = false;
 
-int positionNext = 0;
-int positionLast = 0;
+uint16_t positionNext = 0;
+uint16_t positionLast = 0;
 
 int desiredSteps = 0;
 int currentSteps = 0;
@@ -51,7 +53,7 @@ int currentSteps = 0;
 bool stepDir = false; // Needs to be whichever causes bar to rise up.
 
 unsigned long commandLastTime = 0;
-unsigned long commandLastPeriod = 1;
+unsigned long commandLastPeriod = 0;
 
 void setup() {
   pinMode(kStepPin, OUTPUT);
@@ -62,7 +64,7 @@ void setup() {
   Serial1.begin(115200);
   
   #ifdef usbEcho
-  Serial.begin(9600);
+  Serial.begin(115200);
   #endif
   
   // rise to position 0, where proximity sensor will detect
@@ -73,12 +75,7 @@ void setup() {
 //    delayMicroseconds(kPulseMicros*kLinearTravelSlowdownFactor);
 //    digitalWrite(kStepPin, LOW);
 //    delayMicroseconds(kPulseMicros*kLinearTravelSlowdownFactor);
-//  }
-
-  while (!validSerialDetected)
-  {
-    if (Serial1.read() == 'T') validSerialDetected = true;
-  } 
+//  } 
 }
 
 void loop() {
@@ -86,34 +83,71 @@ void loop() {
   unsigned long stepPulseMicros = currentTime - stepPulseTime;
   unsigned long commandMicros = currentTime - commandLastTime;
   
-  # define kCommandPositionMax 255
   if (Serial1.available())
+  {    
+    int readChar = Serial1.read();
+    if ((readChar & 0xE0) == 0x60) // vpos start code 011
+    {
+      serialIndex = 0;
+      serialBytes[serialIndex] = readChar & 0x1F;
+    }
+    else if ((readChar & 0xE0) == 0x40) // vpos 2nd, 3rd byte code 010
+    {
+      serialBytes[++serialIndex] = readChar & 0x1F;
+    }
+    else if ((readChar & 0xE0) == 0x80) // reset
+    {
+      validSerialDetected = true;
+      #ifdef usbEcho
+      Serial.println("Bits 100: validSerialDetected");
+      #endif
+    }
+  }
+  
+  if (serialIndex == 2)
   {
+    serialIndex = 0;
+    
     positionLast = positionNext;
-    //int commandedPosition = Serial1.read();
-    //positionNext = (commandedPosition * kMaxSteps / kCommandPositionMax) - kMaxSteps/2;
-    float commandedPosition = (float)Serial1.read()/(float)kCommandPositionMax;
-    positionNext = commandedPosition * kMaxSteps - kMaxSteps/2;
+    positionNext = (serialBytes[0] << 10) 
+                   + 
+                   (serialBytes[1] << 5)
+                   + 
+                   (serialBytes[2]);
     commandLastPeriod = currentTime - commandLastTime;
     commandLastTime = currentTime;
     commandMicros = 0;
     
     #ifdef usbEcho
-    Serial.print("Command--------------------");
-    Serial.println(commandedPosition);
+    //Serial.print("Command--------------------");
+    //Serial.println(positionNext);
     #endif
   }
   
-  float lerpPos = (float) commandMicros / (float) commandLastPeriod;
-  desiredSteps = positionLast + lerpPos*(positionNext - positionLast);
+  // Defensive clause - do not pulse until valid serial detected!
+  if (!validSerialDetected) return;
+  
+  if (commandMicros > commandLastPeriod)
+  {
+    desiredSteps = positionNext;
+  }
+  else if (commandLastPeriod <= 0)
+  {
+    desiredSteps = positionNext; // we probably haven't got a positionLast yet?
+  }
+  else
+  {
+    float lerpPos = (float) commandMicros / (float) commandLastPeriod;
+    desiredSteps = positionLast + lerpPos*int(positionNext - positionLast);   
+  }
   
     #ifdef usbEcho
     Serial.print(positionNext);
     Serial.print(", ");
     Serial.print(positionLast);
     Serial.print(", ");
-    Serial.print(lerpPos);
-    Serial.print(", ");
+    //Serial.print(lerpPos);
+    //Serial.print(", ");
     Serial.println(desiredSteps);
     #endif
   
@@ -141,7 +175,7 @@ void loop() {
       stepPulseTime = micros(); // Lets not use currentTime, we might have moved on?
     }
   }
-  
+
   if (deltaSteps != 0)  digitalWrite(kLEDPin, HIGH);
   else                  digitalWrite(kLEDPin, LOW);
 }
