@@ -186,18 +186,22 @@ try:
       
       render_buffer_cache(name[2:5] + '/')
       
-      if (os.path.isfile(sequence_path + '.pickle')):
-        with open(sequence_path + '.pickle', 'rb') as input:
-          sequence_meta = pickle.load(input) 
-          sequence_led_f_www = pickle.load(input) 
-          sequence_led_f_rgb = pickle.load(input) 
-          sequence_led_r_www = pickle.load(input) 
-          sequence_led_r_rgb = pickle.load(input) 
-        
-        if (log_to_console):
-          print("Sequence unpickled " + name)
+      if os.path.isfile(sequence_path + '.pickle'):
+        try:
+          with open(sequence_path + '.pickle', 'rb') as input:
+            sequence_meta = pickle.load(input) 
+            sequence_led_f_www = pickle.load(input) 
+            sequence_led_f_rgb = pickle.load(input) 
+            sequence_led_r_www = pickle.load(input) 
+            sequence_led_r_rgb = pickle.load(input)
+            if (log_to_console):
+              print("Sequence unpickled " + name)
+        except:
+          print("Failed to read " + sequence_path + '.pickle')
+          print("Removing to try again next time around")
+          os.remove(sequence_path + '.pickle')
       
-      else:
+      if not os.path.isfile(sequence_path + '.pickle'):
         if (log_to_console):
           print("New sequence. Parse starting for " + name)
         
@@ -317,42 +321,59 @@ try:
           else:
             print("Cannot parse line: " + line)
         
+        # HACK: Fill in missing rear LEDs
+        for idx in range(0, sequence_line_count):
+          if sequence_led_f_rgb[idx] != None:
+            if sequence_led_r_rgb[idx] == None:
+              max_r = max(sequence_led_f_rgb[idx][3::4])
+              max_g = max(sequence_led_f_rgb[idx][2::4])
+              max_b = max(sequence_led_f_rgb[idx][1::4])
+              sequence_led_r_rgb[idx] = bytearray(pixel_count * 4)
+              for i in range (0, pixel_count * 4, 4):
+                sequence_led_r_rgb[idx][i] = 0xFF
+                sequence_led_r_rgb[idx][i+1] = max_b
+                sequence_led_r_rgb[idx][i+2] = max_g
+                sequence_led_r_rgb[idx][i+3] = max_r
+        
         if (log_to_console):
           print("Parse complete")
           
         # Store for next time round.
-        with open(sequence_path + '.pickle', 'wb') as output:
-          pickle.dump(sequence_meta, output, pickle.HIGHEST_PROTOCOL)
-          pickle.dump(sequence_led_f_www, output, pickle.HIGHEST_PROTOCOL)
-          pickle.dump(sequence_led_f_rgb, output, pickle.HIGHEST_PROTOCOL)
-          pickle.dump(sequence_led_r_www, output, pickle.HIGHEST_PROTOCOL)
-          pickle.dump(sequence_led_r_rgb, output, pickle.HIGHEST_PROTOCOL)
+        try:
+          with open(sequence_path + '.pickle', 'wb') as output:
+            pickle.dump(sequence_meta, output, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(sequence_led_f_www, output, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(sequence_led_f_rgb, output, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(sequence_led_r_www, output, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(sequence_led_r_rgb, output, pickle.HIGHEST_PROTOCOL)
+        except:
+          print("Error writing cache of sequence " + sequence_path)
       
       ### GO! --------------------------------
       
-      # draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)
-      # draw.text((0, 0), 'CUE',  font=font, fill=255)
-      # if host_upsidedown:
-      #   oled.image(image.rotate(180))
-      # else:
-      #   oled.image(image)
-      # oled.display()
-      # 
-      # # Command 11 = Sequence init vpos start
-      # vpos_steps = int(sequence_meta[frame_index][2]*drive_max_steps)
-      # arduinoSerial.write(chr(0xC0 + ((vpos_steps >> 12) & 0x3F)) + chr((vpos_steps >> 6) & 0x3F) + chr(vpos_steps & 0x3F))
-      # if (log_to_console):
-      #   print("Sequence init sent, vpos " + str(vpos_steps))
-      # time.sleep(1.0/60)
-      #   
-      # arduinoSerial.flushInput()
-      # while arduinoSerial.read(1) != "S": 
-      #   # Command 11 = Sequence init vpos start
-      #   vpos_steps = int(sequence_meta[frame_index][2]*drive_max_steps)
-      #   arduinoSerial.write(chr(0xC0 + ((vpos_steps >> 12) & 0x3F)) + chr((vpos_steps >> 6) & 0x3F) + chr(vpos_steps & 0x3F))
-      #   if (log_to_console):
-      #     print("Sequence init sent, vpos " + str(vpos_steps) + ". Waiting for start signal from Drive")
-      #   time.sleep(1.0/60)
+      draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)
+      draw.text((0, 0), 'CUE',  font=font, fill=255)
+      if host_upsidedown:
+        oled.image(image.rotate(180))
+      else:
+        oled.image(image)
+      oled.display()
+      
+      # Command 11 = Sequence init vpos start
+      vpos_steps = int(sequence_meta[frame_index][2]*drive_max_steps)
+      arduinoSerial.write(chr(0xC0 + ((vpos_steps >> 12) & 0x3F)) + chr((vpos_steps >> 6) & 0x3F) + chr(vpos_steps & 0x3F))
+      if (log_to_console):
+        print("Sequence init sent, vpos " + str(vpos_steps))
+      time.sleep(1.0/60)
+        
+      arduinoSerial.flushInput()
+      while arduinoSerial.read(1) != "S": 
+        # Command 11 = Sequence init vpos start
+        vpos_steps = int(sequence_meta[frame_index][2]*drive_max_steps)
+        arduinoSerial.write(chr(0xC0 + ((vpos_steps >> 12) & 0x3F)) + chr((vpos_steps >> 6) & 0x3F) + chr(vpos_steps & 0x3F))
+        if (log_to_console):
+          print("Sequence init sent, vpos " + str(vpos_steps) + ". Waiting for start signal from Drive")
+        time.sleep(1.0/60)
       
       draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)
       draw.text((0, 0), 'RUN',  font=font, fill=255)
