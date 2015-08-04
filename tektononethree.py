@@ -40,17 +40,22 @@ draw = ImageDraw.Draw(image)
 draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)
 
 # Load default font.
-font = ImageFont.load_default()
+font = ImageFont.truetype('miso-bold.ttf', 64)
 
 # Draw something
-draw.text((0, 0), 'TEKTON ONE THREE',  font=font, fill=255)
+draw.text((0, 0), 'INIT',  font=font, fill=255)
 oled.image(image)
 oled.display()
 
-oled_status1_pos = (0,20)
-oled_status1_poz = (oled.width,39)
-oled_status2_pos = (0,40)
-oled_status2_poz = (oled.width, 59)
+# Keep a reference to the original buffer, to assign back after assigning to cached buffers
+buffer_draw = oled._buffer
+# Create a cache of buffer 'images' to pre-render display
+buffer_cache = [None] * 10
+for i in range(10):
+  draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)
+  draw.text((0, 0), 'RUN ' + str(i),  font=font, fill=255)
+  oled.image(image)
+  buffer_cache[i] = list(oled._buffer)
 
 ### DRIVE via ARDUINO
 
@@ -128,6 +133,11 @@ while True:
     if ext not in ['.txt', '.TXT']:
       print 'Reject sequence file extension for ' + sequence_path 
       continue
+    
+    draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)  
+    draw.text((0, 0), 'PARSE',  font=font, fill=255)
+    oled.image(image)
+    oled.display()
     
     if (sequence_path in sequences):
       sequence_meta = sequences[sequence_path]['meta'] 
@@ -259,6 +269,11 @@ while True:
     
     ### GO! --------------------------------
     
+    draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)
+    draw.text((0, 0), 'CUE',  font=font, fill=255)
+    oled.image(image)
+    oled.display()
+    
     # Command 11 = Sequence init vpos start
     vpos_steps = int(sequence_meta[frame_index][2]*drive_max_steps)
     arduinoSerial.write(chr(0xC0 + ((vpos_steps >> 12) & 0x3F)) + chr((vpos_steps >> 6) & 0x3F) + chr(vpos_steps & 0x3F))
@@ -272,7 +287,12 @@ while True:
       arduinoSerial.write(chr(0xC0 + ((vpos_steps >> 12) & 0x3F)) + chr((vpos_steps >> 6) & 0x3F) + chr(vpos_steps & 0x3F))
       if (log_to_console):
         print("Sequence init sent, vpos " + str(vpos_steps) + ". Waiting for start signal from Drive")
-      time.sleep(0.1)
+      time.sleep(1.0/60)
+    
+    draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)
+    draw.text((0, 0), 'RUN',  font=font, fill=255)
+    oled.image(image)
+    oled.display()
         
     if (log_to_console):
       print("Go!")
@@ -285,11 +305,12 @@ while True:
         continue
       
       presentation_time = meta[1]
+      frame_index = meta[0] - 1
       
       while presentation_time > int(time.time() * 1000) - start_time:
-        time.sleep(0.001)
-      
-      frame_index = meta[0] - 1
+        oled._buffer = buffer_cache[frame_index % 10]  
+        oled.display() 
+        time.sleep(0.0001)
       
       # Set Drive
       
@@ -308,11 +329,6 @@ while True:
       
       if (log_to_console):
         print("Frame " + str(frame_index) + " vpos_steps " + str(vpos_steps))
-        
-      # draw.rectangle([oled_status1_pos, oled_status1_poz], outline=0, fill=0)
-      # draw.text(oled_status1_pos, "Frame:  " + items[frame_index],  font=font, fill=255)
-      # draw.rectangle([oled_status2_pos, oled_status2_poz], outline=0, fill=0)
-      # draw.text(oled_status2_pos, "Position: " + items[items_meta_vpos_index],  font=font, fill=255)
-      # oled.image(image)  
-      # oled.display()
+    
+    oled._buffer = buffer_draw
   
