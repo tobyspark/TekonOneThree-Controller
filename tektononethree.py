@@ -208,14 +208,17 @@ arduinoSerial.write('T')
 while True:
 
   start_time = int(time.time() * 1000)
-  time_stamp = 0
 
   for meta in sequence_meta:
     
     if not meta:
       continue
     
-    current_time = int(time.time() * 1000) - start_time
+    presentation_time = meta[1]
+    
+    while presentation_time > int(time.time() * 1000) - start_time:
+      time.sleep(0.001)
+    
     frame_index = meta[0] - 1
     
     # Set Drive
@@ -237,6 +240,4 @@ while True:
     # draw.text(oled_status2_pos, "Position: " + items[items_meta_vpos_index],  font=font, fill=255)
     # oled.image(image)  
     # oled.display()
-      
-  print("Time offset: " + str(int(time.time() * 1000) - start_time - time_stamp))
 
