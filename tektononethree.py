@@ -63,31 +63,145 @@ clockpin_F_RGB = 18 # 12 Physical
 datapin_F_W = 17 # 11 Physical
 clockpin_F_W = 27 # 13 Physical
 
-led_r_rgb = Adafruit_DotStar(numpixels_R, datapin_R_RGB, clockpin_R_RGB)
-led_r_w = Adafruit_DotStar(numpixels_R, datapin_R_W, clockpin_R_W)
-led_f_rgb = Adafruit_DotStar(numpixels_F, datapin_F_RGB, clockpin_F_RGB)
-led_f_w = Adafruit_DotStar(numpixels_F, datapin_F_W, clockpin_F_W)
+# Initialise without image buffers, sending data direct for speed
+# bytearray order: FF B G R
+led_r_rgb = Adafruit_DotStar(0, datapin_R_RGB, clockpin_R_RGB)
+led_r_w = Adafruit_DotStar(0, datapin_R_W, clockpin_R_W)
+led_f_rgb = Adafruit_DotStar(0, datapin_F_RGB, clockpin_F_RGB)
+led_f_w = Adafruit_DotStar(0, datapin_F_W, clockpin_F_W)
+
+# Calculate gamma correction table, makes mid-range colors look 'right'
+gamma = bytearray(256)
+for i in range(256):
+  gamma[i] = int(pow(float(i) / 255.0, 2.7) * 255.0 + 0.5)
+
+# Initialise LED strips
 
 for strip in [led_r_rgb, led_r_w, led_f_rgb, led_f_w]:
   strip.begin()           # Initialize pins for output
   strip.setBrightness(64) # Limit brightness to ~1/4 duty cycle
 
-  for led_index in range(0, numpixels_F):
-    strip.setPixelColor(led_index, 0x0)
+  offBytes = bytearray(numpixels_F * 4)
+  for i in range(0, numpixels_F*4, 4):
+    offBytes[i] = 0xFF
+    offBytes[i+1] = 0x0
+    offBytes[i+2] = 0x0
+    offBytes[i+3] = 0x0
 
-  strip.show()
+  strip.show(offBytes)
 
 ### SEQUENCE FILES
 
-command_index = 0
-unit_index = 1
-frame_index = 2
-meta_time_index = 3 # time is in milliseconds
-meta_vpos_index = 4 # vpos is 0-1
-led_start_index = 3
+items_command_index = 0
+items_unit_index = 1
+items_frame_index = 2
+items_meta_time_index = 3 # time is in milliseconds
+items_meta_vpos_index = 4 # vpos is 0-1
+items_led_start_index = 3
 
-with open('tekton_sequence.txt') as f:
-  sequence_contents = f.readlines();
+sequence_file = open('tekton_sequence.txt')
+sequence_line_count = sum(1 for line in sequence_file)
+sequence_file.seek(0)
+
+sequence_meta = [None] * sequence_line_count
+sequence_led_f_www = [None] * sequence_line_count
+sequence_led_f_rgb = [None] * sequence_line_count
+sequence_led_r_www = [None] * sequence_line_count
+sequence_led_r_rgb = [None] * sequence_line_count
+
+for line in sequence_file:
+  items = line.rstrip().split(' ')
+  
+  # Basic test of line validity
+  if len(items) < 5:
+    continue
+    
+  frame_number = int(items[items_frame_index])
+  frame_index = frame_number - 1 # assumes 1 is starting frame
+  
+  if items[items_command_index] == "/meta":
+    sequence_meta[frame_index] = ( frame_number , int(items[items_meta_time_index]) , float(items[items_meta_vpos_index]) )
+        
+  elif items[items_command_index] == "/led_f":
+    pixel_count = (len(items) - items_led_start_index) / 3
+    pixel_index = 0
+    sequence_led_f_www[frame_index] = bytearray(pixel_count * 4)
+    sequence_led_f_rgb[frame_index] = bytearray(pixel_count * 4)
+    
+    for i in range(items_led_start_index, len(items), 3):
+      
+      red = int(items[i])
+      blue = int(items[i+1])
+      green = int(items[i+2])
+       
+      if red == blue == green:
+        
+        sequence_led_f_www[frame_index][pixel_index]   = 0xFF
+        sequence_led_f_www[frame_index][pixel_index+1] = gamma[blue]
+        sequence_led_f_www[frame_index][pixel_index+2] = gamma[green]
+        sequence_led_f_www[frame_index][pixel_index+3] = gamma[red]
+        
+        sequence_led_f_rgb[frame_index][pixel_index]   = 0xFF
+        sequence_led_f_rgb[frame_index][pixel_index+1] = 0x0
+        sequence_led_f_rgb[frame_index][pixel_index+2] = 0x0
+        sequence_led_f_rgb[frame_index][pixel_index+3] = 0x0
+        
+      else:
+        
+        sequence_led_f_www[frame_index][pixel_index]   = 0xFF
+        sequence_led_f_www[frame_index][pixel_index+1] = 0x0
+        sequence_led_f_www[frame_index][pixel_index+2] = 0x0
+        sequence_led_f_www[frame_index][pixel_index+3] = 0x0
+        
+        sequence_led_f_rgb[frame_index][pixel_index]   = 0xFF
+        sequence_led_f_rgb[frame_index][pixel_index+1] = gamma[blue]
+        sequence_led_f_rgb[frame_index][pixel_index+2] = gamma[green]
+        sequence_led_f_rgb[frame_index][pixel_index+3] = gamma[red]
+      
+      pixel_index += 4
+    
+  elif items[items_command_index] == "/led_r":
+    pixel_count = (len(items) - items_led_start_index) / 3
+    pixel_index = 0
+    sequence_led_r_www[frame_index] = bytearray(pixel_count * 4)
+    sequence_led_r_rgb[frame_index] = bytearray(pixel_count * 4)
+    
+    for i in range(items_led_start_index, len(items), 3):
+      
+      red = int(items[i])
+      blue = int(items[i+1])
+      green = int(items[i+2])
+       
+      if red == blue == green:
+        
+        sequence_led_r_www[frame_index][pixel_index]   = 0xFF
+        sequence_led_r_www[frame_index][pixel_index+1] = gamma[blue]
+        sequence_led_r_www[frame_index][pixel_index+2] = gamma[green]
+        sequence_led_r_www[frame_index][pixel_index+3] = gamma[red]
+        
+        sequence_led_r_rgb[frame_index][pixel_index]   = 0xFF
+        sequence_led_r_rgb[frame_index][pixel_index+1] = 0x0
+        sequence_led_r_rgb[frame_index][pixel_index+2] = 0x0
+        sequence_led_r_rgb[frame_index][pixel_index+3] = 0x0
+        
+      else:
+        
+        sequence_led_r_www[frame_index][pixel_index]   = 0xFF
+        sequence_led_r_www[frame_index][pixel_index+1] = 0x0
+        sequence_led_r_www[frame_index][pixel_index+2] = 0x0
+        sequence_led_r_www[frame_index][pixel_index+3] = 0x0
+        
+        sequence_led_r_rgb[frame_index][pixel_index]   = 0xFF
+        sequence_led_r_rgb[frame_index][pixel_index+1] = gamma[blue]
+        sequence_led_r_rgb[frame_index][pixel_index+2] = gamma[green]
+        sequence_led_r_rgb[frame_index][pixel_index+3] = gamma[red]
+      
+      pixel_index += 4
+      
+  else:
+    print("Cannot parse line: " + line)
+
+### GO! --------------------------------
 
 arduinoSerial.write('T')
 
@@ -96,69 +210,33 @@ while True:
   start_time = int(time.time() * 1000)
   time_stamp = 0
 
-  for line in sequence_contents:
-    current_time = int(time.time() * 1000) - start_time
+  for meta in sequence_meta:
     
-    items = line.rstrip().split(' ')
-
-    if items[command_index] == "/meta":
-      time_stamp = int(items[meta_time_index])
+    if not meta:
+      continue
+    
+    current_time = int(time.time() * 1000) - start_time
+    frame_index = meta[0] - 1
+    
+    # Set Drive
       
-      arduinoSerial.write(chr(int(float(items[meta_vpos_index])*255)))
+    arduinoSerial.write(chr(int(meta[2]*255.0)))
+    
+    # Set LED Strips
+    
+    # print(str(frame_index) + ", " + sequence_led_f_www[frame_index])
+    
+    led_f_w.show(sequence_led_f_www[frame_index])
+    led_f_rgb.show(sequence_led_f_rgb[frame_index])
+    led_r_w.show(sequence_led_r_www[frame_index])
+    led_r_rgb.show(sequence_led_r_rgb[frame_index])
       
-      draw.rectangle([oled_status1_pos, oled_status1_poz], outline=0, fill=0)
-      draw.text(oled_status1_pos, "Frame:  " + items[frame_index],  font=font, fill=255)
-      draw.rectangle([oled_status2_pos, oled_status2_poz], outline=0, fill=0)
-      draw.text(oled_status2_pos, "Position: " + items[meta_vpos_index],  font=font, fill=255)
-      oled.image(image)  
-      oled.display()
-      
-    elif items[command_index] == "/led_f":
-      led_end_index = len(items)-led_start_index
-      led_counter = 0;
-      for i in range(led_start_index, led_end_index, 3):
-        if items[i]:
-          red = int(float(items[i]))
-          blue = int(float(items[i+1]))
-          green = int(float(items[i+2]))
-           
-          if red == blue == green:
-            led_f_w.setPixelColor(led_counter, red)
-            led_f_rgb.setPixelColor(led_counter, 0)
-          else:
-            color = red << 16
-            color += green << 8
-            color += blue
-            led_f_w.setPixelColor(led_counter, 0)
-            led_f_rgb.setPixelColor(led_counter, color)
-        led_counter += 1
-      led_f_w.show()
-      led_f_rgb.show()
-    elif items[command_index] == "/led_r":
-      led_end_index = len(items)-led_start_index
-      led_counter = 0;
-      for i in range(led_start_index, led_end_index, 3):
-        if items[i]:
-          red = int(float(items[i]))
-          blue = int(float(items[i+1]))
-          green = int(float(items[i+2]))
-          
-          if red == blue == green:
-            led_r_w.setPixelColor(led_counter, red)
-            led_r_rgb.setPixelColor(led_counter, 0)
-          else:
-            color = red << 16
-            color += green << 8
-            color += blue
-            led_r_w.setPixelColor(led_counter, 0)
-            led_r_rgb.setPixelColor(led_counter, color)
-        led_counter += 1
-      led_r_w.show()
-      led_r_rgb.show()
-    elif items[command_index] == "message":
-      pass
-    else:
-      print("Cannot parse line: " + line)
+    # draw.rectangle([oled_status1_pos, oled_status1_poz], outline=0, fill=0)
+    # draw.text(oled_status1_pos, "Frame:  " + items[frame_index],  font=font, fill=255)
+    # draw.rectangle([oled_status2_pos, oled_status2_poz], outline=0, fill=0)
+    # draw.text(oled_status2_pos, "Position: " + items[items_meta_vpos_index],  font=font, fill=255)
+    # oled.image(image)  
+    # oled.display()
       
   print("Time offset: " + str(int(time.time() * 1000) - start_time - time_stamp))
 
