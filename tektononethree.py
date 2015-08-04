@@ -8,6 +8,7 @@ host_info = { 'tektononethree-pi1': { 'unit': 2, 'upsidedown': True}, 'tektonone
 import time
 import os
 import socket
+import cPickle as pickle
 
 # LED STRIPS
 from dotstar import Adafruit_DotStar
@@ -140,12 +141,21 @@ items_meta_vpos_index = 4 # vpos is 0-1
 items_led_start_index = 3
 
 sequence_folder = "tekton_sequences"
+sequence_listdir = os.listdir(sequence_folder)
+sequence_listdir.sort()
 while True:
-  for sequence_path in os.listdir(sequence_folder):
-    sequence_path = os.path.join(sequence_folder, sequence_path)
+  for sequence_name in sequence_listdir:
+    sequence_path = os.path.join(sequence_folder, sequence_name)
     
-    name = os.path.splitext(sequence_path)[0]
-    ext = os.path.splitext(sequence_path)[1]
+    name = os.path.splitext(sequence_name)[0]
+    ext = os.path.splitext(sequence_name)[1]
+    
+    print("SEQUENCE: "+ name)
+    
+    # HACKATTACK. This assumes filename convention etc., down the line might have files / OSC with interleaved unit lines
+    if name[0] != str(host_unit):
+      print 'Reject sequence, wrong host for ' + sequence_path
+      continue
     
     if ext not in ['.txt', '.TXT']:
       print 'Reject sequence file extension for ' + sequence_path 
@@ -159,15 +169,16 @@ while True:
       oled.image(image)
     oled.display()
     
-    if (sequence_path in sequences):
-      sequence_meta = sequences[sequence_path]['meta'] 
-      sequence_led_f_www = sequences[sequence_path]['led_f_www'] 
-      sequence_led_f_rgb = sequences[sequence_path]['led_f_rgb'] 
-      sequence_led_r_www = sequences[sequence_path]['led_r_www'] 
-      sequence_led_r_rgb = sequences[sequence_path]['led_r_rgb'] 
+    if (os.path.isfile(sequence_path + '.pickle')):
+      with open(sequence_path + '.pickle', 'rb') as input:
+        sequence_meta = pickle.load(input) 
+        sequence_led_f_www = pickle.load(input) 
+        sequence_led_f_rgb = pickle.load(input) 
+        sequence_led_r_www = pickle.load(input) 
+        sequence_led_r_rgb = pickle.load(input) 
       
       if (log_to_console):
-        print("Sequence already parsed " + name)
+        print("Sequence unpickled " + name)
     
     else:
       if (log_to_console):
@@ -280,12 +291,12 @@ while True:
         print("Parse complete")
         
       # Store for next time round.
-      sequences[sequence_path] = {}
-      sequences[sequence_path]['meta'] = sequence_meta
-      sequences[sequence_path]['led_f_www'] = sequence_led_f_www
-      sequences[sequence_path]['led_f_rgb'] = sequence_led_f_rgb
-      sequences[sequence_path]['led_r_www'] = sequence_led_r_www
-      sequences[sequence_path]['led_r_rgb'] = sequence_led_r_rgb
+      with open(sequence_path + '.pickle', 'wb') as output:
+        pickle.dump(sequence_meta, output, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(sequence_led_f_www, output, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(sequence_led_f_rgb, output, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(sequence_led_r_www, output, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(sequence_led_r_rgb, output, pickle.HIGHEST_PROTOCOL)
     
     ### GO! --------------------------------
     
