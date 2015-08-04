@@ -87,8 +87,11 @@ arduinoSerial = serial.Serial("/dev/ttyAMA0", baudrate=115200, timeout=0, writeT
 
 ### LED 
 
-numpixels_F = 216 # Number of LEDs in strip
-numpixels_R = 90
+# numpixels_F = 216 # Number of LEDs in strip
+# numpixels_R = 90
+
+numpixels_F = 72+67+69 # Number of LEDs in strip
+numpixels_R = 80
 
 datapin_R_RGB   = 16 # 36 Physical, 16 GPIO
 clockpin_R_RGB  = 20 # 38 Physical, 20 GPIO
@@ -115,7 +118,6 @@ for i in range(256):
 
 for strip in [led_r_rgb, led_r_w, led_f_rgb, led_f_w]:
   strip.begin()           # Initialize pins for output
-  strip.setBrightness(64) # Limit brightness to ~1/4 duty cycle
 
   offBytes = bytearray(numpixels_F * 4)
   for i in range(0, numpixels_F*4, 4):
@@ -162,7 +164,7 @@ while True:
       continue
     
     draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)  
-    draw.text((0, 0), 'PARSE',  font=font, fill=255)
+    draw.text((0, 0), 'S/'+ name[2:5],  font=font, fill=255)
     if host_upsidedown:
       oled.image(image.rotate(180))
     else:
@@ -358,15 +360,29 @@ while True:
       
       # Set LED Strips
       
-      # print(str(frame_index) + ", " + sequence_led_f_www[frame_index])
-      
-      led_f_w.show(sequence_led_f_www[frame_index])
-      led_f_rgb.show(sequence_led_f_rgb[frame_index])
-      led_r_w.show(sequence_led_r_www[frame_index])
-      led_r_rgb.show(sequence_led_r_rgb[frame_index])
+      if sequence_led_f_www[frame_index] is not None:
+        led_f_w.show(sequence_led_f_www[frame_index])
+      if sequence_led_f_rgb[frame_index] is not None:
+        led_f_rgb.show(sequence_led_f_rgb[frame_index])
+      if sequence_led_r_www[frame_index] is not None:
+          led_r_w.show(sequence_led_r_www[frame_index])
+      if sequence_led_r_rgb[frame_index] is not None:
+        led_r_rgb.show(sequence_led_r_rgb[frame_index])
       
       if (log_to_console):
         print("Frame " + str(frame_index) + " vpos_steps " + str(vpos_steps))
+    
+    # Sequence End
+    
+    for strip in [led_r_rgb, led_r_w, led_f_rgb, led_f_w]:
+      offBytes = bytearray(numpixels_F * 4)
+      for i in range(0, numpixels_F*4, 4):
+        offBytes[i] = 0xFF
+        offBytes[i+1] = 0x0
+        offBytes[i+2] = 0x0
+        offBytes[i+3] = 0x0
+      
+      strip.show(offBytes)
     
     oled._buffer = buffer_draw
   
