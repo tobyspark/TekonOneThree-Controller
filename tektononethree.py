@@ -3,8 +3,11 @@
 
 log_to_console = True
 
+host_info = { 'tektononethree-pi1': { 'unit': 2, 'upsidedown': True}, 'tektononethree-pi3': { 'unit': 1, 'upsidedown': False} }
+
 import time
 import os
+import socket
 
 # LED STRIPS
 from dotstar import Adafruit_DotStar
@@ -19,6 +22,14 @@ import ImageFont
 # DRIVE via ARDUINO
 import serial
 drive_max_steps = 20000
+
+# HOST
+host_name = socket.gethostname()
+if host_name not in host_info:
+  print('FATAL: Hostname not recognised')
+  exit()
+host_unit = host_info[host_name]['unit'] 
+host_upsidedown = host_info[host_name]['upsidedown'] 
 
 if (log_to_console):
   print("Init start...")
@@ -44,7 +55,10 @@ font = ImageFont.truetype('miso-bold.ttf', 64)
 
 # Draw something
 draw.text((0, 0), 'INIT',  font=font, fill=255)
-oled.image(image)
+if host_upsidedown:
+  oled.image(image.rotate(180))
+else:
+  oled.image(image)
 oled.display()
 
 # Keep a reference to the original buffer, to assign back after assigning to cached buffers
@@ -54,7 +68,10 @@ buffer_cache = [None] * 10
 for i in range(10):
   draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)
   draw.text((0, 0), 'RUN ' + str(i),  font=font, fill=255)
-  oled.image(image)
+  if host_upsidedown: 
+    oled.image(image.rotate(180))
+  else:
+    oled.image(image)
   buffer_cache[i] = list(oled._buffer)
 
 ### DRIVE via ARDUINO
@@ -136,7 +153,10 @@ while True:
     
     draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)  
     draw.text((0, 0), 'PARSE',  font=font, fill=255)
-    oled.image(image)
+    if host_upsidedown:
+      oled.image(image.rotate(180))
+    else:
+      oled.image(image)
     oled.display()
     
     if (sequence_path in sequences):
@@ -271,7 +291,10 @@ while True:
     
     draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)
     draw.text((0, 0), 'CUE',  font=font, fill=255)
-    oled.image(image)
+    if host_upsidedown:
+      oled.image(image.rotate(180))
+    else:
+      oled.image(image)
     oled.display()
     
     # Command 11 = Sequence init vpos start
@@ -279,6 +302,7 @@ while True:
     arduinoSerial.write(chr(0xC0 + ((vpos_steps >> 12) & 0x3F)) + chr((vpos_steps >> 6) & 0x3F) + chr(vpos_steps & 0x3F))
     if (log_to_console):
       print("Sequence init sent, vpos " + str(vpos_steps))
+    time.sleep(1.0/60)
       
     arduinoSerial.flushInput()
     while arduinoSerial.read(1) != "S": 
@@ -291,7 +315,10 @@ while True:
     
     draw.rectangle((0,0,oled.width, oled.height), outline=0, fill=0)
     draw.text((0, 0), 'RUN',  font=font, fill=255)
-    oled.image(image)
+    if host_upsidedown:
+      oled.image(image.rotate(180))
+    else:
+      oled.image(image)
     oled.display()
         
     if (log_to_console):
