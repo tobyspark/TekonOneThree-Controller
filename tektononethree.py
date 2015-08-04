@@ -108,6 +108,8 @@ if (log_to_console):
 
 ### SEQUENCE FILES
 
+sequences = {};
+
 items_command_index = 0
 items_unit_index = 1
 items_frame_index = 2
@@ -119,131 +121,149 @@ sequence_folder = "tekton_sequences"
 while True:
   for sequence_path in os.listdir(sequence_folder):
     sequence_path = os.path.join(sequence_folder, sequence_path)
-  
+    
     name = os.path.splitext(sequence_path)[0]
     ext = os.path.splitext(sequence_path)[1]
-  
+    
     if ext not in ['.txt', '.TXT']:
       print 'Reject sequence file extension for ' + sequence_path 
       continue
-  
-    if (log_to_console):
-      print("Parse started for " + name)
     
-    sequence_file = open(sequence_path)
-    sequence_line_count = sum(1 for line in sequence_file)
-    sequence_file.seek(0)
-    
-    sequence_meta = [None] * sequence_line_count
-    sequence_led_f_www = [None] * sequence_line_count
-    sequence_led_f_rgb = [None] * sequence_line_count
-    sequence_led_r_www = [None] * sequence_line_count
-    sequence_led_r_rgb = [None] * sequence_line_count
-    
-    for line in sequence_file:
-      items = line.rstrip().split(' ')
+    if (sequence_path in sequences):
+      sequence_meta = sequences[sequence_path]['meta'] 
+      sequence_led_f_www = sequences[sequence_path]['led_f_www'] 
+      sequence_led_f_rgb = sequences[sequence_path]['led_f_rgb'] 
+      sequence_led_r_www = sequences[sequence_path]['led_r_www'] 
+      sequence_led_r_rgb = sequences[sequence_path]['led_r_rgb'] 
       
-      # Basic test of line validity
-      if len(items) < 5:
-        print("Cannot parse line: " + str(line))
-        continue
-        
-      frame_number = int(items[items_frame_index])
-      frame_index = frame_number - 1 # assumes 1 is starting frame
-      
-      if items[items_command_index] == "/meta":
-        sequence_meta[frame_index] = ( frame_number , int(items[items_meta_time_index]) , float(items[items_meta_vpos_index]) )
-        # Drive: cue LED bar to start position of sequence so sequence can start when parse finished and bar ready.
-        if (frame_index == 0):
-          # Command 11 = Sequence init vpos start
-          vpos_steps = int(sequence_meta[frame_index][2]*drive_max_steps)
-          arduinoSerial.write(chr(0xC0 + ((vpos_steps >> 10) & 0x1F)) + chr((vpos_steps >> 5) & 0x1F) + chr(vpos_steps & 0x1F))
-          if (log_to_console):
-            print("Sequence init sent, vpos " + str(vpos_steps))
-            
-      elif items[items_command_index] == "/led_f":
-        pixel_count = (len(items) - items_led_start_index) / 3
-        pixel_index = 0
-        sequence_led_f_www[frame_index] = bytearray(pixel_count * 4)
-        sequence_led_f_rgb[frame_index] = bytearray(pixel_count * 4)
-        
-        for i in range(items_led_start_index, len(items), 3):
-          
-          red = int(items[i])
-          blue = int(items[i+1])
-          green = int(items[i+2])
-           
-          if red == blue == green:
-            
-            sequence_led_f_www[frame_index][pixel_index]   = 0xFF
-            sequence_led_f_www[frame_index][pixel_index+1] = gamma[blue]
-            sequence_led_f_www[frame_index][pixel_index+2] = gamma[green]
-            sequence_led_f_www[frame_index][pixel_index+3] = gamma[red]
-            
-            sequence_led_f_rgb[frame_index][pixel_index]   = 0xFF
-            sequence_led_f_rgb[frame_index][pixel_index+1] = 0x0
-            sequence_led_f_rgb[frame_index][pixel_index+2] = 0x0
-            sequence_led_f_rgb[frame_index][pixel_index+3] = 0x0
-            
-          else:
-            
-            sequence_led_f_www[frame_index][pixel_index]   = 0xFF
-            sequence_led_f_www[frame_index][pixel_index+1] = 0x0
-            sequence_led_f_www[frame_index][pixel_index+2] = 0x0
-            sequence_led_f_www[frame_index][pixel_index+3] = 0x0
-            
-            sequence_led_f_rgb[frame_index][pixel_index]   = 0xFF
-            sequence_led_f_rgb[frame_index][pixel_index+1] = gamma[blue]
-            sequence_led_f_rgb[frame_index][pixel_index+2] = gamma[green]
-            sequence_led_f_rgb[frame_index][pixel_index+3] = gamma[red]
-          
-          pixel_index += 4
-        
-      elif items[items_command_index] == "/led_r":
-        pixel_count = (len(items) - items_led_start_index) / 3
-        pixel_index = 0
-        sequence_led_r_www[frame_index] = bytearray(pixel_count * 4)
-        sequence_led_r_rgb[frame_index] = bytearray(pixel_count * 4)
-        
-        for i in range(items_led_start_index, len(items), 3):
-          
-          red = int(items[i])
-          blue = int(items[i+1])
-          green = int(items[i+2])
-           
-          if red == blue == green:
-            
-            sequence_led_r_www[frame_index][pixel_index]   = 0xFF
-            sequence_led_r_www[frame_index][pixel_index+1] = gamma[blue]
-            sequence_led_r_www[frame_index][pixel_index+2] = gamma[green]
-            sequence_led_r_www[frame_index][pixel_index+3] = gamma[red]
-            
-            sequence_led_r_rgb[frame_index][pixel_index]   = 0xFF
-            sequence_led_r_rgb[frame_index][pixel_index+1] = 0x0
-            sequence_led_r_rgb[frame_index][pixel_index+2] = 0x0
-            sequence_led_r_rgb[frame_index][pixel_index+3] = 0x0
-            
-          else:
-            
-            sequence_led_r_www[frame_index][pixel_index]   = 0xFF
-            sequence_led_r_www[frame_index][pixel_index+1] = 0x0
-            sequence_led_r_www[frame_index][pixel_index+2] = 0x0
-            sequence_led_r_www[frame_index][pixel_index+3] = 0x0
-            
-            sequence_led_r_rgb[frame_index][pixel_index]   = 0xFF
-            sequence_led_r_rgb[frame_index][pixel_index+1] = gamma[blue]
-            sequence_led_r_rgb[frame_index][pixel_index+2] = gamma[green]
-            sequence_led_r_rgb[frame_index][pixel_index+3] = gamma[red]
-          
-          pixel_index += 4
-          
-      else:
-        print("Cannot parse line: " + line)
+      if (log_to_console):
+        print("Sequence already parsed " + name)
     
-    if (log_to_console):
-      print("Parse complete")
+    else:
+      if (log_to_console):
+        print("New sequence. Parse starting for " + name)
+      
+      sequence_file = open(sequence_path)
+      sequence_line_count = sum(1 for line in sequence_file)
+      sequence_file.seek(0)
+      
+      sequence_meta = [None] * sequence_line_count
+      sequence_led_f_www = [None] * sequence_line_count
+      sequence_led_f_rgb = [None] * sequence_line_count
+      sequence_led_r_www = [None] * sequence_line_count
+      sequence_led_r_rgb = [None] * sequence_line_count
+      
+      for line in sequence_file:
+        items = line.rstrip().split(' ')
+        
+        # Basic test of line validity
+        if len(items) < 5:
+          print("Cannot parse line: " + str(line))
+          continue
+          
+        frame_number = int(items[items_frame_index])
+        frame_index = frame_number - 1 # assumes 1 is starting frame
+        
+        if items[items_command_index] == "/meta":
+          sequence_meta[frame_index] = ( frame_number , int(items[items_meta_time_index]) , float(items[items_meta_vpos_index]) )
+              
+        elif items[items_command_index] == "/led_f":
+          pixel_count = (len(items) - items_led_start_index) / 3
+          pixel_index = 0
+          sequence_led_f_www[frame_index] = bytearray(pixel_count * 4)
+          sequence_led_f_rgb[frame_index] = bytearray(pixel_count * 4)
+          
+          for i in range(items_led_start_index, len(items), 3):
+            
+            red = int(items[i])
+            blue = int(items[i+1])
+            green = int(items[i+2])
+             
+            if red == blue == green:
+              
+              sequence_led_f_www[frame_index][pixel_index]   = 0xFF
+              sequence_led_f_www[frame_index][pixel_index+1] = gamma[blue]
+              sequence_led_f_www[frame_index][pixel_index+2] = gamma[green]
+              sequence_led_f_www[frame_index][pixel_index+3] = gamma[red]
+              
+              sequence_led_f_rgb[frame_index][pixel_index]   = 0xFF
+              sequence_led_f_rgb[frame_index][pixel_index+1] = 0x0
+              sequence_led_f_rgb[frame_index][pixel_index+2] = 0x0
+              sequence_led_f_rgb[frame_index][pixel_index+3] = 0x0
+              
+            else:
+              
+              sequence_led_f_www[frame_index][pixel_index]   = 0xFF
+              sequence_led_f_www[frame_index][pixel_index+1] = 0x0
+              sequence_led_f_www[frame_index][pixel_index+2] = 0x0
+              sequence_led_f_www[frame_index][pixel_index+3] = 0x0
+              
+              sequence_led_f_rgb[frame_index][pixel_index]   = 0xFF
+              sequence_led_f_rgb[frame_index][pixel_index+1] = gamma[blue]
+              sequence_led_f_rgb[frame_index][pixel_index+2] = gamma[green]
+              sequence_led_f_rgb[frame_index][pixel_index+3] = gamma[red]
+            
+            pixel_index += 4
+          
+        elif items[items_command_index] == "/led_r":
+          pixel_count = (len(items) - items_led_start_index) / 3
+          pixel_index = 0
+          sequence_led_r_www[frame_index] = bytearray(pixel_count * 4)
+          sequence_led_r_rgb[frame_index] = bytearray(pixel_count * 4)
+          
+          for i in range(items_led_start_index, len(items), 3):
+            
+            red = int(items[i])
+            blue = int(items[i+1])
+            green = int(items[i+2])
+             
+            if red == blue == green:
+              
+              sequence_led_r_www[frame_index][pixel_index]   = 0xFF
+              sequence_led_r_www[frame_index][pixel_index+1] = gamma[blue]
+              sequence_led_r_www[frame_index][pixel_index+2] = gamma[green]
+              sequence_led_r_www[frame_index][pixel_index+3] = gamma[red]
+              
+              sequence_led_r_rgb[frame_index][pixel_index]   = 0xFF
+              sequence_led_r_rgb[frame_index][pixel_index+1] = 0x0
+              sequence_led_r_rgb[frame_index][pixel_index+2] = 0x0
+              sequence_led_r_rgb[frame_index][pixel_index+3] = 0x0
+              
+            else:
+              
+              sequence_led_r_www[frame_index][pixel_index]   = 0xFF
+              sequence_led_r_www[frame_index][pixel_index+1] = 0x0
+              sequence_led_r_www[frame_index][pixel_index+2] = 0x0
+              sequence_led_r_www[frame_index][pixel_index+3] = 0x0
+              
+              sequence_led_r_rgb[frame_index][pixel_index]   = 0xFF
+              sequence_led_r_rgb[frame_index][pixel_index+1] = gamma[blue]
+              sequence_led_r_rgb[frame_index][pixel_index+2] = gamma[green]
+              sequence_led_r_rgb[frame_index][pixel_index+3] = gamma[red]
+            
+            pixel_index += 4
+            
+        else:
+          print("Cannot parse line: " + line)
+      
+      if (log_to_console):
+        print("Parse complete")
+        
+      # Store for next time round.
+      sequences[sequence_path] = {}
+      sequences[sequence_path]['meta'] = sequence_meta
+      sequences[sequence_path]['led_f_www'] = sequence_led_f_www
+      sequences[sequence_path]['led_f_rgb'] = sequence_led_f_rgb
+      sequences[sequence_path]['led_r_www'] = sequence_led_r_www
+      sequences[sequence_path]['led_r_rgb'] = sequence_led_r_rgb
     
     ### GO! --------------------------------
+    
+    # Command 11 = Sequence init vpos start
+    vpos_steps = int(sequence_meta[frame_index][2]*drive_max_steps)
+    arduinoSerial.write(chr(0xC0 + ((vpos_steps >> 12) & 0x3F)) + chr((vpos_steps >> 6) & 0x3F) + chr(vpos_steps & 0x3F))
+    if (log_to_console):
+      print("Sequence init sent, vpos " + str(vpos_steps))
       
     arduinoSerial.flushInput()
     while arduinoSerial.read(1) != "S": 
