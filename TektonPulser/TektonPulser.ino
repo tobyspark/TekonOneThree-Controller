@@ -1,31 +1,24 @@
 /*
-  Blink
-  Turns on an LED on for one second, then off for one second, repeatedly.
+TEKTON ONE THREE
+SINUSOIDAL MOTOR DRIVE
+Toby Harris 2015
+*/
 
-  Most Arduinos have an on-board LED you can control. On the Uno and
-  Leonardo, it is attached to digital pin 13. If you're unsure what
-  pin the on-board LED is connected to on your Arduino model, check
-  the documentation at http://arduino.cc
+// HARD WON TRUTH: DON'T DO ANY LOGGING, SERIAL ETC. WHEN DRIVE IN MOTION.
 
-  This example code is in the public domain.
+const bool frontUnit = false;
 
-  modified 8 May 2014
-  by Scott Fitzgerald
- */
+// ** 200 STEPS **
+// DIPSWITCHES ON ON ON ON
+# define kMaxSteps 10000
 
 # define kStepPin 10
 # define kDirPin  16
 # define kProxPin 3
+# define kKillPin 5
 # define kLEDPin  17
 
-// At 800 steps this gives ~2m travel, and this works
-// At 1600 steps this should give 2m travel, but it gives silky smooth ~1m travel
-
-# define kMaxSteps 19000
-
 # define kPulseMicros 5 // Triggers on rising and falling edge
-
-//# define SERIALDEBUG
 
 unsigned long stepPulseTime = 0;
 bool          stepPulseState = false;
@@ -38,6 +31,7 @@ int currentSteps = 0;
 
 int lastProxSteps = -1;
 
+// Start this dir value with whatever gives UP
 bool stepDirToClose = true;
 
 unsigned long commandLastTime = 0;
@@ -45,22 +39,22 @@ unsigned long commandFreqMicros = 1000000/60;
 
 unsigned long startTime = 0;
 uint16_t zeroStepOffset = 100;
-bool riseToZero = true;
+bool firstRun = true;
+bool killTriggered = false;
 
-// the setup function runs once when you press reset or power the board
 void setup() {
-  // initialize digital pin 13 as an output.
   pinMode(kStepPin, OUTPUT);
   pinMode(kDirPin, OUTPUT);
   pinMode(kProxPin, INPUT);
+  pinMode(kKillPin, INPUT);
   digitalWrite(kDirPin, true);
 }
 
-// FOLLOWING 60FPS SIN CALC
-#if true
 void loop() {
-  if (riseToZero) delay(5000);
-  while (riseToZero)
+  // On first run, wait a few seconds to ensure everything fully powered and to allow some warning to anybody near machine
+  if (firstRun) delay(frontUnit ? 5000 : 6000);
+  // On first run, rise up safe margin from bottom end-stop
+  while (firstRun)
   {
     stepPulseState = !stepPulseState;
     digitalWrite(kStepPin, stepPulseState);
@@ -70,7 +64,7 @@ void loop() {
     {
       currentSteps = 0;
       startTime = micros();
-      riseToZero = false;
+      firstRun = false;
     }
   }
  
@@ -78,12 +72,19 @@ void loop() {
   unsigned long stepPulseMicros = currentTime - stepPulseTime;
   unsigned long commandMicros = currentTime - commandLastTime;
   
+  if (!killTriggered && digitalRead(kKillPin)) killTriggered = true;
+  if (killTriggered && currentSteps == 0)
+  {
+    while (true)
+    {
+      delay(1000);
+    }
+  }
+  
   // TASK: Correct for position drift
   if (digitalRead(kProxPin))
   {
     lastProxSteps = currentSteps;
-    //Serial.print("PROX: "); //// NO NO NO! Causes horrible mechanical vibration!
-    //Serial.println(currentSteps);
   }
   if (currentSteps == 0 && lastProxSteps != -1)
   {    
@@ -109,8 +110,10 @@ void loop() {
   // TASK: Command position at 60fps
   if (commandMicros > commandFreqMicros)
   {
+    // 1.9x is max current program will go without hitting pulsing limit
+    // ...but 1.9x gets error after a number of cycles when bar is fixed on 
     positionLast = positionNext;
-    float normalisedPosition = (sin(((currentTime*1.0) / 1000000.0) - HALF_PI) + 1) / 2.0; // What we will receive over serial, ultimately.
+    float normalisedPosition = (sin(((currentTime*(frontUnit ? 1.7 : 1.5)) / 1000000.0) - HALF_PI) + 1) / 2.0; // What we will receive over serial, ultimately.
     positionNext = (normalisedPosition * kMaxSteps);
     commandLastTime = currentTime;
   }
@@ -146,13 +149,4 @@ void loop() {
   
   if (deltaSteps != 0)  digitalWrite(kLEDPin, HIGH);
   else                  digitalWrite(kLEDPin, LOW);
-  
-  #ifdef SERIALDEBUG
-//  Serial.print(desiredSteps);
-//  Serial.print(", ");
-//  Serial.print(stepDirToClose);
-//  Serial.print(", ");
-//  Serial.println(deltaSteps);
-  #endif
 }
-#endif
