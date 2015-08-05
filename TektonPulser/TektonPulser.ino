@@ -5,6 +5,8 @@
 # define kProxPin 00
 # define kLEDPin  17
 
+#import "AccelStepper.h"
+
 enum DriveState 
 { riseToKnownPosition,
   waitingInKnownPosition,
@@ -12,7 +14,7 @@ enum DriveState
   sequenceRun
 };
   
-// # define usbEcho
+# define usbEcho
 
 // r = 0.0239
 // travel = 2
@@ -36,7 +38,7 @@ enum DriveState
 
 // At 800 steps 20000 gives ~2m travel, and this works if with a little vibration
 // At 1600 steps 20000 should give 2m travel, but it gives silky smooth ~1m travel
-# define kMaxSteps 40000
+# define kMaxSteps 20000
 
 // Triggers on rising and falling edge.
 // Minimum value for driver unit: 2.5 micros
@@ -49,29 +51,29 @@ DriveState driveState = riseToKnownPosition;
 uint16_t serialBytes[3];
 char serialIndex = 0;
 
-unsigned long stepPulseTime = 0;
+unsigned long stepPulseLastTime = 0;
 bool          stepPulseState = false;
 
-uint16_t positionNext = 0;
-uint16_t positionLast = 0;
+long positionNext = 0;
+long positionLast = 0;
 
-uint16_t desiredSteps = 0;
-uint16_t currentSteps = 0;
+long stepsDesired = 0;
 
 bool stepDir = false; // Needs to be whichever causes bar to rise up.
 
 unsigned long commandLastTime = 0;
 unsigned long commandLastPeriod = 0;
 
+AccelStepper stepper( AccelStepper::DRIVER, kStepPin, kDirPin );
+
 void setup() {
-  pinMode(kStepPin, OUTPUT);
-  pinMode(kDirPin, OUTPUT);
   pinMode(kErrorPin, INPUT);
   pinMode(kProxPin, INPUT);
   pinMode(kLEDPin, OUTPUT);
   Serial1.begin(115200);
   
-  digitalWrite(kDirPin, stepDir);
+  stepper.setAcceleration(5000);
+  //stepper.setMaxSpeed(3200);
   
   #ifdef usbEcho
   Serial.begin(115200);
@@ -80,7 +82,7 @@ void setup() {
 
 void loop() {
   unsigned long currentTime = micros();
-  unsigned long stepPulseMicros = currentTime - stepPulseTime;
+  unsigned long stepPulseMicros = currentTime - stepPulseLastTime;
   unsigned long commandMicros = currentTime - commandLastTime;
     
   if (Serial1.available())
@@ -121,8 +123,10 @@ void loop() {
       commandLastTime = currentTime;
       commandMicros = 0;
       
+      stepper.moveTo(positionNext);
+      
       #ifdef xxxusbEcho
-      Serial.print("Command--------------------");
+      Serial.print("Command:");
       Serial.println(positionNext);
       #endif
     }
@@ -131,11 +135,10 @@ void loop() {
   switch (driveState)
   {
     case riseToKnownPosition:
-      desiredSteps = kMaxSteps; // Rise up (most of) range of slider
+      stepper.moveTo( kMaxSteps ); // Rise up (most of) range of slider
       if (true || digitalRead(kProxPin)) // ...until proximity sensor detects baton, half way up.
       {
-        currentSteps = kMaxSteps / 2;
-        desiredSteps = currentSteps;
+        stepper.setCurrentPosition(kMaxSteps/2);
         driveState = waitingInKnownPosition;
       }
       break;
@@ -145,8 +148,7 @@ void loop() {
       delay(0.01);
       break;
     case sequenceInit:
-      desiredSteps = positionNext;
-      if (currentSteps == desiredSteps)
+      if (stepper.currentPosition() == positionNext)
       {
         Serial1.write("S"); // Start position
         Serial1.flush();
@@ -154,66 +156,19 @@ void loop() {
       }
       break;
     case sequenceRun:
-      if (commandMicros > commandLastPeriod)
-      {
-        desiredSteps = positionNext;
-      }
-      else if (commandLastPeriod <= 0)
-      {
-        desiredSteps = currentSteps;
-        #ifdef usbEcho
-        Serial.print("WARNING: commandLastPeriod <= 0");
-        #endif
-      }
-      else
-      {
-        float lerpPos = (float) commandMicros / (float) commandLastPeriod;
-        desiredSteps = positionLast + lerpPos*int(positionNext - positionLast);   
-      }
       break;
   }
-    
-  int deltaSteps = desiredSteps - currentSteps;
-  if (deltaSteps != 0)
-  {
-    if (deltaSteps > 0 && !stepDir)
-    {
-      digitalWrite(kDirPin, HIGH);
-      stepDir = true;
-      return; // Direction change has to be 4micros ahead of step
-    }
-    if (deltaSteps < 0 && stepDir)
-    {
-      digitalWrite(kDirPin, LOW);
-      stepDir = false;
-      return; // Direction change has to be 4micros ahead of step
-    }
-    
-    if (stepPulseMicros > kPulseMicros)
-    {
-      stepPulseState = !stepPulseState;
-      digitalWrite(kStepPin, stepPulseState);
-      currentSteps += stepDir ? 1 : -1;
-      stepPulseTime = micros(); // Lets not use currentTime, we might have moved on?
-    }
-  }
   
-  #ifdef xxxxusbEcho
-  Serial.print(positionNext);
-  Serial.print(", ");
-  Serial.print(positionLast);
-  Serial.print(", ");
-  //Serial.print(lerpPos);
-  //Serial.print(", ");
-  Serial.println(desiredSteps);
-  #endif
+  stepper.run();
   
   #ifdef usbEcho
-  Serial.print(currentSteps);
+  Serial.print(positionNext);
   Serial.print(", ");
-  Serial.println(deltaSteps);
+  Serial.print(stepper.currentPosition());
+  Serial.print(", ");
+  Serial.println(stepper.distanceToGo());  
   #endif
   
-  if (deltaSteps != 0)  digitalWrite(kLEDPin, HIGH);
-  else                  digitalWrite(kLEDPin, LOW);
+  if (stepper.distanceToGo())   digitalWrite(kLEDPin, HIGH);
+  else                          digitalWrite(kLEDPin, LOW);
 }
