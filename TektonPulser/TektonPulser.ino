@@ -15,16 +15,17 @@
 
 # define kStepPin 10
 # define kDirPin  16
-# define kErrorPin 15
+# define kProxPin 3
 # define kLEDPin  17
 
 // At 800 steps this gives ~2m travel, and this works
 // At 1600 steps this should give 2m travel, but it gives silky smooth ~1m travel
+
 # define kMaxSteps 19000
 
 # define kPulseMicros 5 // Triggers on rising and falling edge
 
-# define SERIALDEBUG
+//# define SERIALDEBUG
 
 unsigned long stepPulseTime = 0;
 bool          stepPulseState = false;
@@ -35,13 +36,15 @@ int positionLast = 0;
 int desiredSteps = 0;
 int currentSteps = 0;
 
+int lastProxSteps = -1;
+
 bool stepDirToClose = true;
 
 unsigned long commandLastTime = 0;
 unsigned long commandFreqMicros = 1000000/60;
 
 unsigned long startTime = 0;
-uint16_t zeroStepOffset = 1000;
+uint16_t zeroStepOffset = 100;
 bool riseToZero = true;
 
 // the setup function runs once when you press reset or power the board
@@ -49,25 +52,9 @@ void setup() {
   // initialize digital pin 13 as an output.
   pinMode(kStepPin, OUTPUT);
   pinMode(kDirPin, OUTPUT);
-  pinMode(kErrorPin, INPUT);
-  
+  pinMode(kProxPin, INPUT);
   digitalWrite(kDirPin, true);
-  
-  #ifdef SERIALDEBUG
-  Serial.begin(9600);
-  #endif
 }
-
-// CONTINUOUS TURN, MAX SPEED
-#if false
-// the loop function runs over and over again forever
-void loop() {
-  digitalWrite(kStepPin, HIGH);   
-  delayMicroseconds(kPulseMicros);
-  digitalWrite(kStepPin, LOW);
-  delayMicroseconds(kPulseMicros);
-}
-#endif
 
 // FOLLOWING 60FPS SIN CALC
 #if true
@@ -78,31 +65,57 @@ void loop() {
     stepPulseState = !stepPulseState;
     digitalWrite(kStepPin, stepPulseState);
     currentSteps += 1;
-    delayMicroseconds(kPulseMicros * 1000);
+    delayMicroseconds(kPulseMicros * 500);
     if (currentSteps > zeroStepOffset)
     {
       currentSteps = 0;
       startTime = micros();
       riseToZero = false;
     }
-    Serial.println(currentSteps);
   }
-  
-  
+ 
   unsigned long currentTime = micros() - startTime;
   unsigned long stepPulseMicros = currentTime - stepPulseTime;
   unsigned long commandMicros = currentTime - commandLastTime;
   
-  // 60fps
+  // TASK: Correct for position drift
+  if (digitalRead(kProxPin))
+  {
+    lastProxSteps = currentSteps;
+    //Serial.print("PROX: "); //// NO NO NO! Causes horrible mechanical vibration!
+    //Serial.println(currentSteps);
+  }
+  if (currentSteps == 0 && lastProxSteps != -1)
+  {    
+    // Get offset and correct
+    currentSteps = (kMaxSteps / 2) - lastProxSteps;
+    stepDirToClose = (currentSteps < 0);
+    digitalWrite(kDirPin, stepDirToClose);
+    while (currentSteps != 0)
+    {
+      stepPulseState = !stepPulseState;
+      digitalWrite(kStepPin, stepPulseState);
+      currentSteps += stepDirToClose ? 1 : -1;
+      delayMicroseconds(kPulseMicros * 500);
+    }
+    
+    // Don't do this again until a new value has been read
+    lastProxSteps = -1;
+    
+    // Reset time so sin wave picks up from bottom
+    startTime = micros();
+  }
+  
+  // TASK: Command position at 60fps
   if (commandMicros > commandFreqMicros)
   {
     positionLast = positionNext;
-    float normalisedPosition = (sin(((currentTime*1.1) / 1000000.0) - HALF_PI) + 1) / 2.0; // What we will receive over serial, ultimately.
+    float normalisedPosition = (sin(((currentTime*1.0) / 1000000.0) - HALF_PI) + 1) / 2.0; // What we will receive over serial, ultimately.
     positionNext = (normalisedPosition * kMaxSteps);
-    Serial.println(positionNext);
     commandLastTime = currentTime;
   }
   
+  // TASK: Interpolate instantaneous desired position for this loop from 60fps commanded position
   float lerpPos = (float) commandMicros / (float) commandFreqMicros;
   desiredSteps = positionLast + lerpPos*(positionNext - positionLast);
   
