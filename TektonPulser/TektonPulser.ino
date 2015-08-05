@@ -5,7 +5,7 @@
 # define kProxPin 00
 # define kLEDPin  17
 
-#import "AccelStepper.h"
+#import "TBZAccelStepper.h"
 
 enum DriveState 
 { riseToKnownPosition,
@@ -14,7 +14,7 @@ enum DriveState
   sequenceRun
 };
   
-# define usbEcho
+//# define usbEcho
 
 // r = 0.0239
 // travel = 2
@@ -64,7 +64,7 @@ bool stepDir = false; // Needs to be whichever causes bar to rise up.
 unsigned long commandLastTime = 0;
 unsigned long commandLastPeriod = 0;
 
-AccelStepper stepper( AccelStepper::DRIVER, kStepPin, kDirPin );
+TBZAccelStepper stepper(kStepPin, kDirPin );
 
 void setup() {
   pinMode(kErrorPin, INPUT);
@@ -72,8 +72,8 @@ void setup() {
   pinMode(kLEDPin, OUTPUT);
   Serial1.begin(115200);
   
-  stepper.setAcceleration(5000);
-  //stepper.setMaxSpeed(3200);
+  stepper.setAcceleration(10000);
+  stepper.setMaxSpeed(10000);
   
   #ifdef usbEcho
   Serial.begin(115200);
